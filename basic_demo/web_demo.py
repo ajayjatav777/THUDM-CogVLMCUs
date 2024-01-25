@@ -210,7 +210,8 @@ def main(args):
 
 
     # demo.queue(concurrency_count=10)
-    demo.launch()
+    demo.launch(server_name='0.0.0.0', server_port=8000)  # Replace 1234 with your desired port number
+    # demo.launch()
 
 
 if __name__ == '__main__':
