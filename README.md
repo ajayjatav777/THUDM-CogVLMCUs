@@ -108,6 +108,8 @@ First, we need to install the dependencies.
 # CUDA >= 11.8
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
+pip install gradio
+pip install filelock --upgrade
 ```
 
 **All code for inference is located under the ``basic_demo/`` directory. Please switch to this directory first before
