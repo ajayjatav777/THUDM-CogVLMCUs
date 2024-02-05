@@ -15,41 +15,35 @@ experience, refer to the 'composite_demo'.
 """
 import gradio as gr
 import os, sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PIL import Image
+import torch
+from torchvision.transforms import ToPILImage
 import torch
 import time
 from sat.model.mixins import CachedAutoregressiveMixin
 from sat.mpu import get_model_parallel_world_size
 from sat.model import AutoModel
 
-
 from utils.utils import chat, llama2_tokenizer, llama2_text_processor_inference, get_image_processor, parse_response
 from utils.models import CogAgentModel, CogVLMModel
 
+DESCRIPTION = '''<h1 style='text-align: center'> <a powered by Lapetus</a> </h1>'''
 
+NOTES = '<h1> Managed by lapetus solutions </h1>'
 
-DESCRIPTION = '''<h1 style='text-align: center'> <a href="https://github.com/THUDM/CogVLM">CogVLM / CogAgent</a> </h1>'''
+AGENT_NOTICE = ' '
 
-NOTES = '<h3> This app is adapted from <a href="https://github.com/THUDM/CogVLM">https://github.com/THUDM/CogVLM</a>. It would be recommended to check out the repo if you want to see the detail of our model, CogVLM & CogAgent. </h3>'
-
-MAINTENANCE_NOTICE1 = 'Hint 1: If the app report "Something went wrong, connection error out", please turn off your proxy and retry.<br>Hint 2: If you upload a large size of image like 10MB, it may take some time to upload and process. Please be patient and wait.'
-
-
-AGENT_NOTICE = 'Hint 1: To use <strong>Agent</strong> function, please use the <a href="https://github.com/THUDM/CogVLM/blob/main/utils/utils/template.py#L761">prompts for agents</a>.'
-
-GROUNDING_NOTICE = 'Hint 2: To use <strong>Grounding</strong> function, please use the <a href="https://github.com/THUDM/CogVLM/blob/main/utils/utils/template.py#L344">prompts for grounding</a>.'
-
-
-
+GROUNDING_NOTICE = ' '
 
 default_chatbox = [("", "Hi, What do you want to know about this image?")]
-
 
 model = image_processor = text_processor_infer = None
 
 is_grounding = False
+
 
 def process_image_without_resize(image_prompt):
     image = Image.open(image_prompt)
@@ -59,23 +53,25 @@ def process_image_without_resize(image_prompt):
     filename_grounding = f"examples/{timestamp}_grounding{file_ext}"
     return image, filename_grounding
 
+
 from sat.quantization.kernels import quantize
 
-def load_model(args): 
+
+def load_model(args):
     model, model_args = AutoModel.from_pretrained(
         args.from_pretrained,
         args=argparse.Namespace(
-        deepspeed=None,
-        local_rank=0,
-        rank=0,
-        world_size=world_size,
-        model_parallel_size=world_size,
-        mode='inference',
-        fp16=args.fp16,
-        bf16=args.bf16,
-        skip_init=True,
-        use_gpu_initialization=True if (torch.cuda.is_available() and args.quant is None) else False,
-        device='cpu' if args.quant else 'cuda'),
+            deepspeed=None,
+            local_rank=0,
+            rank=0,
+            world_size=world_size,
+            model_parallel_size=world_size,
+            mode='inference',
+            fp16=args.fp16,
+            bf16=args.bf16,
+            skip_init=True,
+            use_gpu_initialization=True if (torch.cuda.is_available() and args.quant is None) else False,
+            device='cpu' if args.quant else 'cuda'),
         overwrite_args={'model_parallel_size': world_size} if world_size != 1 else {}
     )
     model = model.eval()
@@ -106,35 +102,105 @@ def post(
         result_previous,
         hidden_image,
         state
-        ):
+):
     result_text = [(ele[0], ele[1]) for ele in result_previous]
-    for i in range(len(result_text)-1, -1, -1):
+    for i in range(len(result_text) - 1, -1, -1):
         if result_text[i][0] == "" or result_text[i][0] == None:
             del result_text[i]
     print(f"history {result_text}")
-    
+
     global model, image_processor, cross_image_processor, text_processor_infer, is_grounding
 
     try:
         with torch.no_grad():
             pil_img, image_path_grounding = process_image_without_resize(image_prompt)
             response, _, cache_image = chat(
-                    image_path="", 
-                    model=model, 
-                    text_processor=text_processor_infer,
-                    img_processor=image_processor,
-                    query=input_text, 
-                    history=result_text, 
-                    cross_img_processor=cross_image_processor,
-                    image=pil_img, 
-                    max_length=2048, 
-                    top_p=top_p, 
-                    temperature=temperature,
-                    top_k=top_k,
-                    invalid_slices=text_processor_infer.invalid_slices if hasattr(text_processor_infer, "invalid_slices") else [],
-                    no_prompt=False,
-                    args=state['args']
+                image_path="",
+                model=model,
+                text_processor=text_processor_infer,
+                img_processor=image_processor,
+                query=input_text,
+                history=result_text,
+                cross_img_processor=cross_image_processor,
+                image=pil_img,
+                max_length=2048,
+                top_p=top_p,
+                temperature=temperature,
+                top_k=top_k,
+                invalid_slices=text_processor_infer.invalid_slices if hasattr(text_processor_infer,
+                                                                              "invalid_slices") else [],
+                no_prompt=False,
+                args=state['args']
             )
+            # print(cache_image, 'image data')
+            # print(type(cache_image), 'type of image')
+
+    
+            # Assuming `data` is your complex tuple structure
+            # Loop through each item in the tuple, which are dictionaries
+            # count=0
+            # for item in cache_image:
+            #     count=count+1
+            #     print(count)
+            #     print(item,'llllllllllllllllllllllllllllllllllllllllllllllllllll')
+            #     if 'image' in item:
+            #         count=count+1
+            #         print(count,'count internal loop')
+            #         # Extract the tensor
+            #         try:
+            #              image_tensor = item['image'][0]
+            #              if isinstance(image_tensor, torch.Tensor):
+            #                 # Move the tensor to the CPU and detach it from the computation graph
+            #                 image_tensor_cpu = image_tensor.detach().to('cpu')
+    
+            #                 # Convert to appropriate dtype. Here you should adjust scaling as needed
+            #                 # This is an example, assuming the tensor is already in a suitable range for conversion
+            #                 image_tensor_cpu = image_tensor_cpu.to(torch.float32)  # Convert dtype if necessary for scaling
+    
+            #                 # Convert to PIL Image (adjust the normalization if needed based on your tensor's range)
+            #                 to_pil_image = ToPILImage()
+            #                 pil_image = to_pil_image(image_tensor_cpu)
+            #         except:
+            #                 pil_image = item
+
+            #         # # Ensure it's a tensor
+            #         # if isinstance(image_tensor, torch.Tensor):
+            #         #     # Move the tensor to the CPU and detach it from the computation graph
+            #         #     image_tensor_cpu = image_tensor.detach().to('cpu')
+
+            #         #     # Convert to appropriate dtype. Here you should adjust scaling as needed
+            #         #     # This is an example, assuming the tensor is already in a suitable range for conversion
+            #         #     image_tensor_cpu = image_tensor_cpu.to(torch.float32)  # Convert dtype if necessary for scaling
+
+            #         #     # Convert to PIL Image (adjust the normalization if needed based on your tensor's range)
+            #         #     to_pil_image = ToPILImage()
+            #         #     pil_image = to_pil_image(image_tensor_cpu)
+
+            #         pil_image.save(str(count)+'cachei.png')
+
+                        # pil_image is now a PIL Image object of the first tensor found, you can process it as needed
+                        # If you need to process all tensors, consider how you'll handle each PIL Image
+                        # break  # Remove this if you want to process all images in the tuple
+
+            # Assuming `image_tensor` is your tensor on 'cuda:0' with dtype=torch.bfloat16
+
+            # Step 1: Move the tensor to CPU and detach it from the computation graph
+            # image_cpu = cache_image[0].detach().to('cpu')
+            # 
+            # # Step 2: Convert data type, if necessary. This step depends on your tensor's value range.
+            # # If your tensor is already in the range [0, 255], you can directly convert it to 'torch.uint8'
+            # # Otherwise, you might need to normalize/scale it appropriately.
+            # # Example for a tensor with values in [0, 1]:
+            # image_cpu = (image_cpu * 255).type(torch.uint8)
+            # 
+            # # Step 3 & 4: Convert to PIL Image
+            # # The ToPILImage transform expects a tensor in CxHxW format, with the data type torch.uint8
+            # to_pil_image = ToPILImage()
+            # pil_image = to_pil_image(image_cpu)
+
+            # Now `pil_image` is a PIL Image object, ready for use with PIL-compatible libraries or saving to a file.
+
+            # pil_image.save('cachei.png')
     except Exception as e:
         print("error message", e)
         result_text.append((input_text, 'Timeout! Please wait a few minutes and retry.'))
@@ -156,6 +222,7 @@ def post(
 def clear_fn(value):
     return "", default_chatbox, None
 
+
 def clear_fn2(value):
     return default_chatbox
 
@@ -164,7 +231,7 @@ def main(args):
     global model, image_processor, cross_image_processor, text_processor_infer, is_grounding
     model, image_processor, cross_image_processor, text_processor_infer = load_model(args)
     is_grounding = 'grounding' in args.from_pretrained
-    
+
     gr.close_all()
 
     with gr.Blocks(css='style.css') as demo:
@@ -172,15 +239,15 @@ def main(args):
 
         gr.Markdown(DESCRIPTION)
         gr.Markdown(NOTES)
-        
 
         with gr.Row():
             with gr.Column(scale=5):
                 with gr.Group():
-                    gr.Markdown(AGENT_NOTICE)
-                    gr.Markdown(GROUNDING_NOTICE)
-                    input_text = gr.Textbox(label='Input Text', placeholder='Please enter text prompt below and press ENTER.')
-                    
+                    # gr.Markdown(AGENT_NOTICE)
+                    # gr.Markdown(GROUNDING_NOTICE)
+                    input_text = gr.Textbox(label='Input Text',
+                                            placeholder='Please enter text prompt below and press ENTER.')
+
                     with gr.Row():
                         run_button = gr.Button('Generate')
                         clear_button = gr.Button('Clear')
@@ -193,21 +260,25 @@ def main(args):
                     top_k = gr.Slider(maximum=100, value=10, minimum=1, step=1, label='Top K')
 
             with gr.Column(scale=5):
-                result_text = gr.components.Chatbot(label='Multi-round conversation History', value=[("", "Hi, What do you want to know about this image?")], height=600)
+                result_text = gr.components.Chatbot(label='Multi-round conversation History',
+                                                    value=[("", "Hi, What do you want to know about this image?")],
+                                                    height=600)
                 hidden_image_hash = gr.Textbox(visible=False)
 
-
-        gr.Markdown(MAINTENANCE_NOTICE1)
+        # gr.Markdown(MAINTENANCE_NOTICE1)
 
         print(gr.__version__)
-        run_button.click(fn=post,inputs=[input_text, temperature, top_p, top_k, image_prompt, result_text, hidden_image_hash, state],
+        run_button.click(fn=post,
+                         inputs=[input_text, temperature, top_p, top_k, image_prompt, result_text, hidden_image_hash,
+                                 state],
                          outputs=[input_text, result_text, hidden_image_hash])
-        input_text.submit(fn=post,inputs=[input_text, temperature, top_p, top_k, image_prompt, result_text, hidden_image_hash, state],
-                         outputs=[input_text, result_text, hidden_image_hash])
+        input_text.submit(fn=post,
+                          inputs=[input_text, temperature, top_p, top_k, image_prompt, result_text, hidden_image_hash,
+                                  state],
+                          outputs=[input_text, result_text, hidden_image_hash])
         clear_button.click(fn=clear_fn, inputs=clear_button, outputs=[input_text, result_text, image_prompt])
         image_prompt.upload(fn=clear_fn2, inputs=clear_button, outputs=[result_text])
         image_prompt.clear(fn=clear_fn2, inputs=clear_button, outputs=[result_text])
-
 
     # demo.queue(concurrency_count=10)
     demo.launch(server_name='0.0.0.0', server_port=8000)  # Replace 1234 with your desired port number
@@ -216,12 +287,14 @@ def main(args):
 
 if __name__ == '__main__':
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--max_length", type=int, default=2048, help='max length of the total sequence')
     parser.add_argument("--top_p", type=float, default=0.4, help='top p for nucleus sampling')
     parser.add_argument("--top_k", type=int, default=1, help='top k for top k sampling')
     parser.add_argument("--temperature", type=float, default=.8, help='temperature for sampling')
-    parser.add_argument("--version", type=str, default="chat", choices=['chat', 'vqa', 'chat_old', 'base'], help='version of language process. if there is \"text_processor_version\" in model_config.json, this option will be overwritten')
+    parser.add_argument("--version", type=str, default="chat", choices=['chat', 'vqa', 'chat_old', 'base'],
+                        help='version of language process. if there is \"text_processor_version\" in model_config.json, this option will be overwritten')
     parser.add_argument("--quant", choices=[8, 4], type=int, default=None, help='quantization bits')
     parser.add_argument("--from_pretrained", type=str, default="cogagent-chat", help='pretrained ckpt')
     parser.add_argument("--local_tokenizer", type=str, default="lmsys/vicuna-7b-v1.5", help='tokenizer path')
@@ -231,5 +304,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     rank = int(os.environ.get('RANK', 0))
     world_size = int(os.environ.get('WORLD_SIZE', 1))
-    args = parser.parse_args()   
+    args = parser.parse_args()
     main(args)
