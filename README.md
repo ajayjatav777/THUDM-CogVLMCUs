@@ -110,6 +110,7 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 pip install gradio
 pip install filelock --upgrade
+pip install jsonlines
 ```
 
 **All code for inference is located under the ``basic_demo/`` directory. Please switch to this directory first before
